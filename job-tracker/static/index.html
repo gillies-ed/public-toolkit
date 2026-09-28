@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Job Tracker</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="/">Job Tracker</a>
+  <a href="/dashboard">Dashboard</a>
+  <a href="/" class="active">Applications</a>
+  <a href="/contract">Contract</a>
+  <a href="/contact-log">Contact Log</a>
+  <a href="/target-companies">Target Companies</a>
+  <a href="/skills-demand">Skills In Demand</a>
+  <a href="/distances">Distances</a>
+  <div class="spacer"></div>
+</nav>
+
+<div class="page">
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <h1>Applications</h1>
+    <button class="btn btn-secondary" onclick="exportCSV()">Export CSV</button>
+    <button class="btn btn-primary" onclick="openNew()">+ New Application</button>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="filter-bar">
+    <label>Search
+      <input type="text" id="f-search" placeholder="Company / position…" oninput="loadApps()" />
+    </label>
+    <label>Status
+      <select id="f-status" onchange="loadApps()"><option value="">All</option></select>
+    </label>
+    <label>Agency/Direct
+      <select id="f-agency" onchange="loadApps()">
+        <option value="">All</option>
+        <option>Direct</option>
+        <option>Agency</option>
+      </select>
+    </label>
+    <label>Location
+      <input type="text" id="f-location" placeholder="City…" oninput="loadApps()" />
+    </label>
+    <label>Source
+      <input type="text" id="f-source" placeholder="LinkedIn…" oninput="loadApps()" />
+    </label>
+    <label>From
+      <input type="date" id="f-from" onchange="loadApps()" />
+    </label>
+    <label>To
+      <input type="date" id="f-to" onchange="loadApps()" />
+    </label>
+    <button class="btn btn-secondary btn-sm" onclick="clearFilters()">Clear</button>
+  </div>
+
+  <!-- Table -->
+  <div class="card" style="padding:0">
+    <div class="table-wrap">
+      <table id="app-table">
+        <thead>
+          <tr>
+            <th onclick="sortBy('date')">Date <span class="sort-icon" id="sh-date"></span></th>
+            <th onclick="sortBy('company')">Company <span class="sort-icon" id="sh-company"></span></th>
+            <th onclick="sortBy('agency_name')">Agency <span class="sort-icon" id="sh-agency_name"></span></th>
+            <th onclick="sortBy('position')">Position <span class="sort-icon" id="sh-position"></span></th>
+            <th onclick="sortBy('location')">Location <span class="sort-icon" id="sh-location"></span></th>
+            <th onclick="sortBy('wage_max')">Wage Max <span class="sort-icon" id="sh-wage_max"></span></th>
+            <th onclick="sortBy('expected_wage')">Expected <span class="sort-icon" id="sh-expected_wage"></span></th>
+            <th>Status</th>
+            <th>Next Stage</th>
+            <th onclick="sortBy('office_days')">Office Days <span class="sort-icon" id="sh-office_days"></span></th>
+            <th onclick="sortBy('round_trip_miles')">Round Trip <span class="sort-icon" id="sh-round_trip_miles"></span></th>
+            <th onclick="sortBy('last_update')">Updated <span class="sort-icon" id="sh-last_update"></span></th>
+            <th>Interviews</th>
+          </tr>
+        </thead>
+        <tbody id="app-tbody">
+          <tr><td colspan="13" class="empty-state">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── APPLICATION MODAL ── -->
+<div class="modal-overlay hidden" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">New Application</h2>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <!-- Extract section -->
+    <div class="extract-section">
+      <h3>Auto-fill from job advert</h3>
+      <div class="extract-row">
+        <input type="url" id="extract-url" placeholder="Paste job URL here…" />
+        <button class="btn btn-primary btn-sm" id="btn-extract-url" onclick="extractFromUrl()">Extract</button>
+      </div>
+      <div id="extract-url-msg" class="extract-msg"></div>
+      <div class="extract-fallback" id="extract-fallback" style="display:none">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
+          Couldn't read that page. Paste the job spec below:
+        </p>
+        <textarea id="extract-text" placeholder="Paste the full job description here…"></textarea>
+        <button class="btn btn-primary btn-sm" onclick="extractFromText()" style="margin-top:6px">Extract from text</button>
+        <div id="extract-text-msg" class="extract-msg"></div>
+      </div>
+    </div>
+
+    <!-- Form -->
+    <form id="app-form" onsubmit="saveApplication(event)">
+      <div class="form-grid">
+        <div class="field">
+          <label>Company</label>
+          <input type="text" name="company" />
+        </div>
+        <div class="field">
+          <label>Position</label>
+          <input type="text" name="position" />
+        </div>
+        <div class="field">
+          <label>Job Type</label>
+          <select name="job_type" id="sel-job-type" onchange="onJobTypeChange()">
+            <option value="">— select —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Date</label>
+          <input type="date" name="date" />
+        </div>
+        <div class="field">
+          <label>Location</label>
+          <input type="text" name="location" id="f-loc-input" oninput="lookupDistance(this.value)" />
+        </div>
+        <div class="field" id="dist-prompt" style="display:none">
+          <label>One-way distance (miles) <span style="font-weight:400;color:var(--warning);font-size:11px">— not in distances list</span></label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="number" id="oneway-miles" step="0.1" min="0" placeholder="miles one way…" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-size:13px" />
+            <button type="button" class="btn btn-secondary btn-sm" onclick="saveOneWayDistance()">Save & Calculate</button>
+          </div>
+        </div>
+        <div class="field" id="field-wage-max">
+          <label>Wage Max (£/yr)</label>
+          <input type="number" name="wage_max" min="0" step="1000" />
+        </div>
+        <div class="field" id="field-expected-wage">
+          <label>Expected Wage (£/yr)</label>
+          <input type="number" name="expected_wage" min="0" step="1000" />
+        </div>
+        <div class="field" id="field-day-rate" style="display:none">
+          <label>Day Rate (£/day)</label>
+          <input type="number" name="day_rate" min="0" step="50" />
+        </div>
+        <div class="field" id="field-contract-length" style="display:none">
+          <label>Contract Length</label>
+          <input type="text" name="contract_length" placeholder="e.g. 6 months" />
+        </div>
+        <div class="field">
+          <label>Round Trip (miles)</label>
+          <input type="number" name="round_trip_miles" step="0.1" id="f-rtrip" />
+        </div>
+        <div class="field">
+          <label>Office Days / week</label>
+          <input type="number" name="office_days" min="0" max="5" />
+        </div>
+        <div class="field">
+          <label>Agency / Direct</label>
+          <select name="agency_or_direct" id="sel-agd">
+            <option value="">— select —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Agency Name</label>
+          <input type="text" name="agency_name" />
+        </div>
+        <div class="field" style="align-self:end;padding-bottom:4px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" name="agency_qualified" style="width:16px;height:16px;cursor:pointer" />
+            Agency responded
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:6px">
+            <input type="checkbox" name="company_responded" style="width:16px;height:16px;cursor:pointer" />
+            Company responded
+          </label>
+        </div>
+        <div class="field">
+          <label>Applied / Contacted</label>
+          <select name="applied_or_contacted" id="sel-apc">
+            <option value="">— select —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Source</label>
+          <select name="source" id="sel-src">
+            <option value="">— select —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select name="status" id="sel-status-form">
+            <option value="">— select —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Next Stage</label>
+          <select name="next_stage" id="sel-next-form">
+            <option value="">— select —</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label>Job URL</label>
+          <input type="url" name="job_url" />
+        </div>
+        <div class="field full">
+          <label>Interview Dates</label>
+          <div id="interview-dates-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:4px"></div>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="addInterviewDateRow()">+ Add date</button>
+        </div>
+
+        <div class="field full">
+          <label>Interview Skills <span style="font-weight:400;color:var(--muted)">(topics/questions that came up)</span></label>
+          <div id="skills-container" style="border:1px solid var(--border);border-radius:5px;padding:6px 8px;min-height:38px;display:flex;flex-wrap:wrap;gap:5px;background:var(--bg);cursor:text" onclick="document.getElementById('skill-input').focus()">
+            <!-- tags rendered here -->
+            <input id="skill-input" type="text" placeholder="Type a skill and press Enter…"
+              style="border:none;outline:none;background:transparent;font-size:13px;flex:1;min-width:160px;padding:2px 0"
+              onkeydown="handleSkillKey(event)" />
+          </div>
+        </div>
+        <div class="field full">
+          <label>Notes</label>
+          <textarea name="notes"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-danger" id="btn-delete" style="display:none;margin-right:auto" onclick="deleteApp(editingId)">Delete</button>
+        <button type="button" class="btn btn-secondary" id="btn-duplicate" style="display:none" onclick="duplicateApp()">Duplicate</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btn-save">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+// ── State ──
+const DEAD_STATUSES = new Set(['Rejected', 'Withdrawn', 'No Response', 'Closed']);
+let dropdowns = {};
+let sortCol = 'date';
+let sortDir = 'desc';
+let editingId = null;
+let currentSkills = [];   // [{id, skill}] for the open modal
+
+// ── Bootstrap ──
+async function init() {
+  dropdowns = await fetch('/api/dropdowns').then(r => r.json());
+  populateDropdowns();
+  loadApps();
+}
+
+function populateDropdowns() {
+  const statusFilter = document.getElementById('f-status');
+  dropdowns.status.forEach(s => statusFilter.append(new Option(s, s)));
+
+  populateSelect('sel-status-form', dropdowns.status);
+  populateSelect('sel-next-form', dropdowns.next_stage);
+  populateSelect('sel-job-type', dropdowns.job_type);
+  populateSelect('sel-agd', dropdowns.agency_or_direct);
+  populateSelect('sel-apc', dropdowns.applied_or_contacted);
+  populateSelect('sel-src', dropdowns.source);
+}
+
+function onJobTypeChange() {
+  const jobType = document.getElementById('sel-job-type').value;
+  const isContract = jobType === 'Contract';
+  document.getElementById('field-wage-max').style.display = isContract ? 'none' : '';
+  document.getElementById('field-day-rate').style.display = isContract ? '' : 'none';
+  document.getElementById('field-contract-length').style.display = isContract ? '' : 'none';
+}
+
+function populateSelect(id, options) {
+  const sel = document.getElementById(id);
+  options.forEach(o => sel.append(new Option(o, o)));
+}
+
+// ── Load / render applications ──
+async function loadApps() {
+  const params = new URLSearchParams();
+  const get = id => document.getElementById(id).value;
+  if (get('f-search'))   params.set('search', get('f-search'));
+  if (get('f-status'))   params.set('status', get('f-status'));
+  if (get('f-agency'))   params.set('agency_or_direct', get('f-agency'));
+  if (get('f-location')) params.set('location', get('f-location'));
+  if (get('f-source'))   params.set('source', get('f-source'));
+  if (get('f-from'))     params.set('date_from', get('f-from'));
+  if (get('f-to'))       params.set('date_to', get('f-to'));
+  params.set('sort_by', sortCol);
+  params.set('sort_dir', sortDir);
+  params.set('exclude_contract', '1');
+
+  const apps = await fetch('/api/applications?' + params).then(r => r.json());
+  renderTable(apps);
+  updateSortIcons();
+}
+
+function renderTable(apps) {
+  const tbody = document.getElementById('app-tbody');
+  if (!apps.length) {
+    tbody.innerHTML = '<tr><td colspan="13" class="empty-state">No applications found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = apps.map(a => `
+    <tr style="cursor:pointer" class="${DEAD_STATUSES.has(a.status) ? 'app-dead' : ''}" onclick="openEdit(${a.id})">
+      <td class="nowrap">${a.date || '—'}</td>
+      <td class="td-company">${esc(a.company)}${a.company_responded ? ' <span style="color:var(--success);font-weight:700" title="Company responded">✓</span>' : ''}</td>
+      <td title="${a.agency_qualified ? 'Agency responded' : ''}">${esc(a.agency_name || '—')}${a.agency_qualified ? ' <span style="color:var(--success);font-weight:700" title="Agency responded">✓</span>' : ''}</td>
+      <td>${esc(a.position)}${a.applied_or_contacted === 'Contacted' ? ' <span style="color:var(--success);font-size:1rem;font-weight:700" title="Inbound contact">↓</span>' : ''}</td>
+      <td>${esc(a.location || '—')}</td>
+      <td class="wage">${a.wage_max ? '£' + a.wage_max.toLocaleString() : '—'}</td>
+      <td class="wage">${a.expected_wage ? '£' + a.expected_wage.toLocaleString() : '—'}</td>
+      <td onclick="event.stopPropagation()">
+        <select class="inline-select" onchange="patchField(${a.id},'status',this.value)">
+          <option value="">—</option>
+          ${dropdowns.status.map(s => `<option${s===a.status?' selected':''}>${s}</option>`).join('')}
+        </select>
+      </td>
+      <td onclick="event.stopPropagation()">
+        <select class="inline-select" onchange="patchField(${a.id},'next_stage',this.value)">
+          <option value="">—</option>
+          ${dropdowns.next_stage.map(s => `<option${s===a.next_stage?' selected':''}>${s}</option>`).join('')}
+        </select>
+      </td>
+      <td style="text-align:center">${a.office_days ?? '—'}</td>
+      <td>${a.round_trip_miles ? a.round_trip_miles + ' mi' : '—'}</td>
+      <td class="nowrap">${a.last_update || '—'}</td>
+      <td class="nowrap" style="font-size:12px;color:var(--muted)">${(a.interview_dates||[]).map(d=>d.interview_date).join('<br>')||'—'}</td>
+    </tr>
+  `).join('');
+}
+
+function agdBadge(v) {
+  if (v === 'Direct') return 'badge-applied';
+  if (v === 'Agency') return 'badge-phone';
+  return 'badge-default';
+}
+
+function statusBadge(s) {
+  const map = {
+    'Applied':'badge-applied','Phone Screen':'badge-phone',
+    'First Interview':'badge-interview','Second Interview':'badge-interview',
+    'Final Interview':'badge-interview','Technical Test':'badge-technical',
+    'Offer Received':'badge-offer','Rejected':'badge-rejected',
+    'Withdrawn':'badge-withdrawn','No Response':'badge-noresponse','Closed':'badge-closed'
+  };
+  return map[s] || 'badge-default';
+}
+
+// ── Sort ──
+function sortBy(col) {
+  if (sortCol === col) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  else { sortCol = col; sortDir = 'desc'; }
+  loadApps();
+}
+
+function updateSortIcons() {
+  document.querySelectorAll('.sort-icon').forEach(el => el.textContent = '');
+  const el = document.getElementById('sh-' + sortCol);
+  if (el) el.textContent = sortDir === 'asc' ? '▲' : '▼';
+}
+
+// ── Filter clear ──
+function clearFilters() {
+  ['f-search','f-location','f-source','f-from','f-to'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-status').value = '';
+  document.getElementById('f-agency').value = '';
+  loadApps();
+}
+
+// ── Modal open/close ──
+function openNew() {
+  editingId = null;
+  document.getElementById('modal-title').textContent = 'New Application';
+  document.getElementById('app-form').reset();
+  document.getElementById('extract-url').value = '';
+  document.getElementById('extract-url-msg').textContent = '';
+  document.getElementById('extract-fallback').style.display = 'none';
+  document.getElementById('extract-text').value = '';
+
+  // Default date to today
+  document.querySelector('[name=date]').value = new Date().toISOString().slice(0,10);
+
+  document.getElementById('btn-delete').style.display = 'none';
+  document.getElementById('btn-duplicate').style.display = 'none';
+  onJobTypeChange();
+  loadSkills(null);
+  loadInterviewDates(null);
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+function openEdit(id) {
+  editingId = id;
+  document.getElementById('modal-title').textContent = 'Edit Application';
+  document.getElementById('extract-url').value = '';
+  document.getElementById('extract-url-msg').textContent = '';
+  document.getElementById('extract-fallback').style.display = 'none';
+
+  fetch(`/api/applications/${id}`)
+    .then(r => r.json())
+    .then(a => {
+      const form = document.getElementById('app-form');
+      form.reset();
+      document.getElementById('dist-prompt').style.display = 'none';
+      for (const [k, v] of Object.entries(a)) {
+        const el = form.elements[k];
+        if (!el || v === null || v === undefined) continue;
+        if (el.type === 'checkbox') el.checked = !!v;
+        else el.value = v;
+      }
+      document.getElementById('btn-delete').style.display = '';
+      document.getElementById('btn-duplicate').style.display = '';
+      onJobTypeChange();
+      loadSkills(id);
+      loadInterviewDates(id);
+      document.getElementById('modal-overlay').classList.remove('hidden');
+    });
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+// ── Save / delete ──
+async function saveApplication(e) {
+  e.preventDefault();
+  const form = e.target;
+  const data = {};
+  for (const el of form.elements) {
+    if (!el.name) continue;
+    data[el.name] = el.type === 'checkbox' ? el.checked : (el.value || null);
+  }
+  // Numeric coercions
+  if (data.wage_max) data.wage_max = parseInt(data.wage_max);
+  if (data.expected_wage) data.expected_wage = parseInt(data.expected_wage);
+  if (data.day_rate) data.day_rate = parseInt(data.day_rate);
+  if (data.office_days) data.office_days = parseInt(data.office_days);
+  if (data.round_trip_miles) data.round_trip_miles = parseFloat(data.round_trip_miles);
+
+  const url = editingId ? `/api/applications/${editingId}` : '/api/applications';
+  const method = editingId ? 'PUT' : 'POST';
+
+  const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  if (res.ok) {
+    const saved = await res.json();
+    await flushInterviewDates(editingId ?? saved.id);
+    if (!editingId) await flushBufferedSkills(saved.id);
+    closeModal();
+    loadApps();
+  } else {
+    const err = await res.json();
+    alert('Error: ' + (err.detail || 'Unknown error'));
+  }
+}
+
+async function patchField(id, field, value) {
+  await fetch(`/api/applications/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ [field]: value || null })
+  });
+  loadApps();
+}
+
+async function duplicateApp() {
+  if (!editingId) return;
+  const res = await fetch(`/api/applications/${editingId}/duplicate`, { method: 'POST' });
+  if (res.ok) {
+    const copy = await res.json();
+    closeModal();
+    loadApps();
+    openEdit(copy.id);
+  } else {
+    alert('Failed to duplicate application.');
+  }
+}
+
+async function deleteApp(id) {
+  if (!confirm('Delete this application?')) return;
+  await fetch(`/api/applications/${id}`, { method: 'DELETE' });
+  closeModal();
+  loadApps();
+}
+
+// ── Auto-fill extraction ──
+async function extractFromUrl() {
+  const url = document.getElementById('extract-url').value.trim();
+  if (!url) return;
+  const btn = document.getElementById('btn-extract-url');
+  const msg = document.getElementById('extract-url-msg');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Fetching…';
+  msg.textContent = '';
+  msg.className = 'extract-msg';
+
+  try {
+    const res = await fetch('/api/extract/url', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ url })
+    });
+    if (res.ok) {
+      const fields = await res.json();
+      applyExtractedFields(fields);
+      msg.textContent = 'Fields extracted successfully.';
+      msg.className = 'extract-msg success';
+      document.getElementById('extract-fallback').style.display = 'none';
+    } else {
+      const err = await res.json();
+      msg.textContent = err.detail || 'Extraction failed.';
+      msg.className = 'extract-msg error';
+      document.getElementById('extract-fallback').style.display = 'block';
+    }
+  } catch {
+    msg.textContent = 'Network error.';
+    msg.className = 'extract-msg error';
+    document.getElementById('extract-fallback').style.display = 'block';
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Extract';
+}
+
+async function extractFromText() {
+  const text = document.getElementById('extract-text').value.trim();
+  if (!text) return;
+  const msg = document.getElementById('extract-text-msg');
+  msg.textContent = 'Extracting…';
+  msg.className = 'extract-msg';
+
+  try {
+    const res = await fetch('/api/extract/text', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ text })
+    });
+    if (res.ok) {
+      const fields = await res.json();
+      applyExtractedFields(fields);
+      msg.textContent = 'Fields extracted successfully.';
+      msg.className = 'extract-msg success';
+    } else {
+      const err = await res.json();
+      msg.textContent = err.detail || 'Extraction failed.';
+      msg.className = 'extract-msg error';
+    }
+  } catch {
+    msg.textContent = 'Network error.';
+    msg.className = 'extract-msg error';
+  }
+}
+
+function applyExtractedFields(fields) {
+  const form = document.getElementById('app-form');
+  const mapping = {
+    company: 'company', position: 'position', wage_max: 'wage_max',
+    location: 'location', office_days: 'office_days',
+    agency_name: 'agency_name', agency_or_direct: 'agency_or_direct'
+  };
+  for (const [k, formName] of Object.entries(mapping)) {
+    if (fields[k] !== null && fields[k] !== undefined) {
+      const el = form.elements[formName];
+      if (el) el.value = fields[k];
+    }
+  }
+  // Trigger distance lookup if location was filled
+  if (fields.location) lookupDistance(fields.location);
+}
+
+// ── Distance auto-lookup ──
+let distLookupTimer = null;
+function lookupDistance(city) {
+  clearTimeout(distLookupTimer);
+  if (!city) {
+    document.getElementById('dist-prompt').style.display = 'none';
+    return;
+  }
+  distLookupTimer = setTimeout(async () => {
+    const res = await fetch('/api/distances/lookup/' + encodeURIComponent(city));
+    const data = res.ok ? await res.json() : null;
+    if (data) {
+      document.getElementById('f-rtrip').value = data.round_trip_miles;
+      document.getElementById('dist-prompt').style.display = 'none';
+    } else {
+      document.getElementById('oneway-miles').value = '';
+      document.getElementById('dist-prompt').style.display = '';
+    }
+  }, 400);
+}
+
+async function saveOneWayDistance() {
+  const city = document.getElementById('f-loc-input').value.trim();
+  const oneway = parseFloat(document.getElementById('oneway-miles').value);
+  if (!city || isNaN(oneway) || oneway <= 0) return;
+
+  const roundTrip = Math.round(oneway * 2 * 10) / 10;
+  document.getElementById('f-rtrip').value = roundTrip;
+
+  // Save to distances table for future lookups
+  const res = await fetch('/api/distances', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ city, round_trip_miles: roundTrip })
+  });
+  if (res.ok) {
+    document.getElementById('dist-prompt').style.display = 'none';
+  }
+}
+
+// ── Keyboard close ──
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+
+// ── Interview dates ──
+let currentDates = [];  // [{id, interview_date}] for saved; {id:null, interview_date:''} for unsaved rows
+
+async function loadInterviewDates(appId) {
+  currentDates = appId
+    ? await fetch(`/api/applications/${appId}/interview-dates`).then(r => r.json())
+    : [];
+  renderInterviewDates(appId === null ? 2 : 0);  // 2 blank rows for new, 0 extra for existing
+}
+
+function renderInterviewDates(blankRows) {
+  const list = document.getElementById('interview-dates-list');
+  list.innerHTML = '';
+
+  // Saved rows
+  currentDates.forEach(d => {
+    list.appendChild(makeDateRow(d.id, d.interview_date));
+  });
+
+  // Blank rows
+  for (let i = 0; i < blankRows; i++) {
+    list.appendChild(makeDateRow(null, ''));
+  }
+}
+
+function makeDateRow(savedId, value) {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:6px;align-items:center';
+  row.dataset.savedId = savedId ?? '';
+
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.value = value;
+  input.style.cssText = 'padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-size:13px;flex:1';
+
+  if (savedId) {
+    // Existing saved date — save on change, delete on clear
+    input.onchange = async () => {
+      if (!input.value) {
+        await fetch(`/api/interview-dates/${savedId}`, { method: 'DELETE' });
+        row.remove();
+        currentDates = currentDates.filter(d => d.id !== savedId);
+      } else {
+        // Delete old and create new (simplest for SQLite)
+        await fetch(`/api/interview-dates/${savedId}`, { method: 'DELETE' });
+        const res = await fetch(`/api/applications/${editingId}/interview-dates`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ interview_date: input.value })
+        });
+        if (res.ok) {
+          const saved = await res.json();
+          row.dataset.savedId = saved.id;
+          const idx = currentDates.findIndex(d => d.id === savedId);
+          if (idx >= 0) currentDates[idx] = saved;
+        }
+      }
+    };
+  }
+
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.textContent = '×';
+  del.style.cssText = 'background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--muted);line-height:1;padding:0 4px';
+  del.title = 'Remove';
+  del.onclick = async () => {
+    if (savedId) {
+      await fetch(`/api/interview-dates/${savedId}`, { method: 'DELETE' });
+      currentDates = currentDates.filter(d => d.id !== savedId);
+    }
+    row.remove();
+  };
+
+  row.appendChild(input);
+  row.appendChild(del);
+  return row;
+}
+
+function addInterviewDateRow() {
+  document.getElementById('interview-dates-list').appendChild(makeDateRow(null, ''));
+}
+
+async function flushInterviewDates(appId) {
+  const rows = document.querySelectorAll('#interview-dates-list [type=date]');
+  for (const input of rows) {
+    if (!input.value || input.closest('[data-saved-id]')?.dataset.savedId) continue;
+    await fetch(`/api/applications/${appId}/interview-dates`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ interview_date: input.value })
+    });
+  }
+}
+
+// ── Interview skills ──
+async function loadSkills(appId) {
+  currentSkills = appId ? await fetch(`/api/applications/${appId}/skills`).then(r => r.json()) : [];
+  renderSkillTags();
+}
+
+function renderSkillTags() {
+  const container = document.getElementById('skills-container');
+  const input = document.getElementById('skill-input');
+  // Remove old tags (keep the input)
+  container.querySelectorAll('.skill-tag').forEach(el => el.remove());
+  currentSkills.forEach(s => {
+    const tag = document.createElement('span');
+    tag.className = 'skill-tag';
+    tag.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:#e0e7ff;color:#3730a3;border-radius:20px;padding:2px 10px 2px 10px;font-size:12px;font-weight:500;white-space:nowrap';
+    tag.innerHTML = `${esc(s.skill)} <button onclick="removeSkill(${s.id})" style="background:none;border:none;cursor:pointer;color:#6366f1;font-size:14px;padding:0;line-height:1" title="Remove">&times;</button>`;
+    container.insertBefore(tag, input);
+  });
+}
+
+async function handleSkillKey(e) {
+  if (e.key !== 'Enter' && e.key !== ',') return;
+  e.preventDefault();
+  const val = e.target.value.trim().replace(/,$/, '');
+  if (!val) return;
+  e.target.value = '';
+
+  if (!editingId) {
+    // Unsaved application — buffer locally, will save after create
+    currentSkills.push({ id: null, skill: val });
+    renderSkillTags();
+    return;
+  }
+
+  const res = await fetch(`/api/applications/${editingId}/skills`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ skill: val })
+  });
+  if (res.ok) {
+    const s = await res.json();
+    currentSkills.push(s);
+    renderSkillTags();
+  }
+}
+
+async function removeSkill(skillId) {
+  if (skillId === null) {
+    currentSkills = currentSkills.filter(s => s.id !== null || s.id !== skillId);
+    renderSkillTags();
+    return;
+  }
+  await fetch(`/api/skills/${skillId}`, { method: 'DELETE' });
+  currentSkills = currentSkills.filter(s => s.id !== skillId);
+  renderSkillTags();
+}
+
+async function flushBufferedSkills(appId) {
+  // Called after creating a new application — save any buffered skills
+  const pending = currentSkills.filter(s => s.id === null);
+  for (const s of pending) {
+    const res = await fetch(`/api/applications/${appId}/skills`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ skill: s.skill })
+    });
+    if (res.ok) {
+      const saved = await res.json();
+      s.id = saved.id;
+    }
+  }
+}
+
+// ── CSV export ──
+function exportCSV() {
+  const params = new URLSearchParams();
+  const get = id => document.getElementById(id).value;
+  if (get('f-search'))   params.set('search', get('f-search'));
+  if (get('f-status'))   params.set('status', get('f-status'));
+  if (get('f-agency'))   params.set('agency_or_direct', get('f-agency'));
+  if (get('f-location')) params.set('location', get('f-location'));
+  if (get('f-source'))   params.set('source', get('f-source'));
+  if (get('f-from'))     params.set('date_from', get('f-from'));
+  if (get('f-to'))       params.set('date_to', get('f-to'));
+  params.set('sort_by', sortCol);
+  params.set('sort_dir', sortDir);
+  params.set('exclude_contract', '1');
+  window.location.href = '/api/applications/export/csv?' + params;
+}
+
+function esc(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+init();
+</script>
+</body>
+</html>

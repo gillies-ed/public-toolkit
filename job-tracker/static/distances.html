@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Distances — Job Tracker</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="/">Job Tracker</a>
+  <a href="/dashboard">Dashboard</a>
+  <a href="/">Applications</a>
+  <a href="/contract">Contract</a>
+  <a href="/contact-log">Contact Log</a>
+  <a href="/target-companies">Target Companies</a>
+  <a href="/skills-demand">Skills In Demand</a>
+  <a href="/distances" class="active">Distances</a>
+</nav>
+
+<div class="page">
+  <div class="toolbar">
+    <h1>Distance Lookup</h1>
+    <p style="color:var(--muted);font-size:13px">Southampton → city round-trip miles (as measured by Google Maps)</p>
+  </div>
+
+  <!-- Bulk import -->
+  <div class="card" style="margin-bottom:1rem">
+    <h3 style="font-size:14px;margin-bottom:.5rem">Bulk Import from Google Sheets</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:.75rem">
+      Select your City and Round Trip columns in Google Sheets, copy, and paste below.
+      Tab-separated or comma-separated. Existing cities will be updated.
+    </p>
+    <textarea id="bulk-text" rows="6" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:5px;font-size:13px;font-family:monospace" placeholder="London&#9;156.2&#10;Bristol&#9;78.4&#10;Birmingham&#9;123.1"></textarea>
+    <div style="display:flex;gap:.5rem;align-items:center;margin-top:.5rem">
+      <button class="btn btn-primary btn-sm" onclick="bulkImport()">Import</button>
+      <span id="bulk-msg" style="font-size:12px"></span>
+    </div>
+  </div>
+
+  <!-- Add form -->
+  <div class="card" style="margin-bottom:1rem">
+    <h3 style="font-size:14px;margin-bottom:.75rem">Add Single City</h3>
+    <form id="add-form" onsubmit="addDistance(event)" style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap">
+      <div class="field" style="flex:1;min-width:180px">
+        <label>City / Location</label>
+        <input type="text" id="new-city" placeholder="e.g. London" required />
+      </div>
+      <div class="field" style="width:160px">
+        <label>Round Trip (miles)</label>
+        <input type="number" id="new-miles" step="0.1" min="0" required />
+      </div>
+      <button type="submit" class="btn btn-primary">Add</button>
+    </form>
+    <div id="add-msg" style="margin-top:.5rem;font-size:12px"></div>
+  </div>
+
+  <!-- Distance table -->
+  <div class="card" style="padding:0">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>City / Location</th>
+            <th>Round Trip (miles)</th>
+            <th style="width:160px"></th>
+          </tr>
+        </thead>
+        <tbody id="dist-tbody">
+          <tr><td colspan="3" class="empty-state">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+async function bulkImport() {
+  const text = document.getElementById('bulk-text').value.trim();
+  const msg  = document.getElementById('bulk-msg');
+  if (!text) return;
+
+  msg.textContent = 'Importing…';
+  msg.style.color = 'var(--muted)';
+
+  const res = await fetch('/api/distances/bulk', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ text })
+  });
+  const result = await res.json();
+
+  if (res.ok) {
+    const parts = [];
+    if (result.added)   parts.push(`${result.added} added`);
+    if (result.updated) parts.push(`${result.updated} updated`);
+    if (result.skipped) parts.push(`${result.skipped} skipped`);
+    msg.textContent = parts.join(', ') || 'Nothing imported';
+    msg.style.color = 'var(--success)';
+    if (result.errors.length) {
+      msg.textContent += ' — ' + result.errors.join('; ');
+      msg.style.color = 'var(--warning)';
+    }
+    document.getElementById('bulk-text').value = '';
+    loadDistances();
+  } else {
+    msg.textContent = result.detail || 'Import failed';
+    msg.style.color = 'var(--danger)';
+  }
+}
+
+async function loadDistances() {
+  const dists = await fetch('/api/distances').then(r => r.json());
+  const tbody = document.getElementById('dist-tbody');
+  if (!dists.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty-state">No cities added yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = dists.map(d => `
+    <tr id="row-${d.id}">
+      <td>
+        <span id="city-text-${d.id}">${esc(d.city)}</span>
+        <input type="text" id="city-input-${d.id}" value="${esc(d.city)}" style="display:none;width:180px" />
+      </td>
+      <td>
+        <span id="miles-text-${d.id}">${d.round_trip_miles}</span>
+        <input type="number" id="miles-input-${d.id}" value="${d.round_trip_miles}" step="0.1" style="display:none;width:100px" />
+      </td>
+      <td style="display:flex;gap:.4rem;justify-content:flex-end">
+        <button class="btn btn-secondary btn-sm" id="edit-btn-${d.id}" onclick="startEdit(${d.id})">Edit</button>
+        <button class="btn btn-primary btn-sm" id="save-btn-${d.id}" style="display:none" onclick="saveEdit(${d.id})">Save</button>
+        <button class="btn btn-secondary btn-sm" id="cancel-btn-${d.id}" style="display:none" onclick="cancelEdit(${d.id}, '${esc(d.city)}', ${d.round_trip_miles})">Cancel</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteDistance(${d.id})">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function startEdit(id) {
+  toggle(id, true);
+}
+
+function cancelEdit(id, origCity, origMiles) {
+  document.getElementById(`city-input-${id}`).value = origCity;
+  document.getElementById(`miles-input-${id}`).value = origMiles;
+  toggle(id, false);
+}
+
+function toggle(id, editing) {
+  document.getElementById(`city-text-${id}`).style.display  = editing ? 'none' : '';
+  document.getElementById(`miles-text-${id}`).style.display = editing ? 'none' : '';
+  document.getElementById(`city-input-${id}`).style.display  = editing ? '' : 'none';
+  document.getElementById(`miles-input-${id}`).style.display = editing ? '' : 'none';
+  document.getElementById(`edit-btn-${id}`).style.display   = editing ? 'none' : '';
+  document.getElementById(`save-btn-${id}`).style.display   = editing ? '' : 'none';
+  document.getElementById(`cancel-btn-${id}`).style.display = editing ? '' : 'none';
+}
+
+async function saveEdit(id) {
+  const city  = document.getElementById(`city-input-${id}`).value.trim();
+  const miles = parseFloat(document.getElementById(`miles-input-${id}`).value);
+  if (!city || isNaN(miles)) { alert('Please fill in both fields.'); return; }
+
+  const res = await fetch(`/api/distances/${id}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ city, round_trip_miles: miles })
+  });
+  if (res.ok) loadDistances();
+  else { const e = await res.json(); alert(e.detail || 'Error'); }
+}
+
+async function deleteDistance(id) {
+  if (!confirm('Remove this city?')) return;
+  await fetch(`/api/distances/${id}`, { method: 'DELETE' });
+  loadDistances();
+}
+
+async function addDistance(e) {
+  e.preventDefault();
+  const city  = document.getElementById('new-city').value.trim();
+  const miles = parseFloat(document.getElementById('new-miles').value);
+  const msg   = document.getElementById('add-msg');
+
+  const res = await fetch('/api/distances', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ city, round_trip_miles: miles })
+  });
+
+  if (res.ok) {
+    document.getElementById('add-form').reset();
+    msg.textContent = `"${city}" added.`;
+    msg.style.color = 'var(--success)';
+    loadDistances();
+  } else {
+    const err = await res.json();
+    msg.textContent = err.detail || 'Error';
+    msg.style.color = 'var(--danger)';
+  }
+  setTimeout(() => msg.textContent = '', 3000);
+}
+
+function esc(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+loadDistances();
+</script>
+</body>
+</html>

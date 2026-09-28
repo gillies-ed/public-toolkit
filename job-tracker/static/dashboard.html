@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Job Tracker</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="/">Job Tracker</a>
+  <a href="/dashboard" class="active">Dashboard</a>
+  <a href="/">Applications</a>
+  <a href="/contract">Contract</a>
+  <a href="/contact-log">Contact Log</a>
+  <a href="/target-companies">Target Companies</a>
+  <a href="/skills-demand">Skills In Demand</a>
+  <a href="/distances">Distances</a>
+</nav>
+
+<div class="page">
+  <div class="toolbar">
+    <h1>Dashboard</h1>
+    <button class="btn btn-secondary btn-sm" onclick="loadStats()">Refresh</button>
+  </div>
+
+  <!-- Stat cards -->
+  <div style="display:flex;flex-direction:column;gap:.5rem">
+    <div class="stat-cards" style="position:relative">
+      <div style="position:absolute;left:0;top:50%;transform:translateY(-50%);font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.05em;writing-mode:vertical-rl;text-orientation:mixed;padding-left:2px">PERM</div>
+      <div class="stat-card"><div class="val" id="s-perm-total">—</div><div class="lbl">Total</div></div>
+      <div class="stat-card"><div class="val" id="s-perm-active" style="color:#2563eb">—</div><div class="lbl">Active</div></div>
+      <div class="stat-card"><div class="val" id="s-perm-interviews" style="color:#d97706">—</div><div class="lbl">Interviews</div></div>
+      <div class="stat-card"><div class="val" id="s-perm-offers" style="color:#16a34a">—</div><div class="lbl">Offers</div></div>
+      <div class="stat-card"><div class="val" id="s-perm-rejections" style="color:#dc2626">—</div><div class="lbl">Rejections</div></div>
+      <div class="stat-card"><div class="val" id="s-perm-no-responses" style="color:#94a3b8">—</div><div class="lbl">No Response</div></div>
+    </div>
+    <div class="stat-cards" style="position:relative">
+      <div style="position:absolute;left:0;top:50%;transform:translateY(-50%);font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.05em;writing-mode:vertical-rl;text-orientation:mixed;padding-left:2px">CONTRACT</div>
+      <div class="stat-card"><div class="val" id="s-contract-total">—</div><div class="lbl">Total</div></div>
+      <div class="stat-card"><div class="val" id="s-contract-active" style="color:#2563eb">—</div><div class="lbl">Active</div></div>
+      <div class="stat-card"><div class="val" id="s-contract-interviews" style="color:#d97706">—</div><div class="lbl">Interviews</div></div>
+      <div class="stat-card"><div class="val" id="s-contract-offers" style="color:#16a34a">—</div><div class="lbl">Offers</div></div>
+      <div class="stat-card"><div class="val" id="s-contract-rejections" style="color:#dc2626">—</div><div class="lbl">Rejections</div></div>
+      <div class="stat-card"><div class="val" id="s-contract-no-responses" style="color:#94a3b8">—</div><div class="lbl">No Response</div></div>
+    </div>
+  </div>
+
+  <!-- Weekly + Status -->
+  <div class="chart-grid">
+    <div class="card">
+      <h3 style="font-size:14px;margin-bottom:1rem;color:var(--muted)">Applications per week (last 12 weeks)</h3>
+      <canvas id="weekly-chart" height="200"></canvas>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;gap:0">
+      <div style="flex:1;display:flex;flex-direction:column;padding-bottom:.5rem;border-bottom:1px solid var(--border)">
+        <h3 style="font-size:14px;margin-bottom:.5rem;color:var(--muted)">Perm by Status</h3>
+        <canvas id="status-perm-chart"></canvas>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;padding-top:.5rem">
+        <h3 style="font-size:14px;margin-bottom:.5rem;color:var(--muted)">Contract by Status</h3>
+        <canvas id="status-contract-chart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sources + Top Skills -->
+  <div style="margin-top:1rem;display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <div class="card">
+      <h3 style="font-size:14px;margin-bottom:1rem;color:var(--muted)">Top sources</h3>
+      <canvas id="source-chart" height="120"></canvas>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;margin-bottom:.25rem;color:var(--muted)">Most asked skills — frequency (top 10)</h3>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:.75rem">Combined advert sightings + interview questions</div>
+      <div id="skills-bar-empty" style="color:var(--muted);font-size:13px;display:none">No skills logged yet.</div>
+      <canvas id="skills-chart" height="120"></canvas>
+    </div>
+  </div>
+
+  <!-- Skills at a glance -->
+  <div class="card" style="margin-top:1rem">
+    <h3 style="font-size:14px;margin-bottom:.25rem;color:var(--muted)">Skills in demand — at a glance</h3>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:.75rem">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2563eb;margin-right:4px;vertical-align:middle"></span>Seen in adverts &nbsp;
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#16a34a;margin-right:4px;vertical-align:middle"></span>Asked at interview
+    </div>
+    <div id="skills-cloud-empty" style="color:var(--muted);font-size:13px;display:none">No skills logged yet.</div>
+    <div id="skills-cloud" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"></div>
+  </div>
+</div>
+
+<script>
+let weeklyChart, statusPermChart, statusContractChart, sourceChart, skillsChart;
+
+const PALETTE = [
+  '#2563eb','#7c3aed','#0891b2','#d97706','#16a34a',
+  '#dc2626','#db2777','#65a30d','#ea580c','#6366f1'
+];
+
+async function loadStats() {
+  const [s, advertSkills, interviewSkills] = await Promise.all([
+    fetch('/api/stats').then(r => r.json()),
+    fetch('/api/advert-skills/frequency').then(r => r.json()),
+    fetch('/api/skills/frequency').then(r => r.json()),
+  ]);
+
+  document.getElementById('s-perm-total').textContent = s.perm_total;
+  document.getElementById('s-perm-active').textContent = s.perm_active;
+  document.getElementById('s-perm-interviews').textContent = s.perm_interviews;
+  document.getElementById('s-perm-offers').textContent = s.perm_offers;
+  document.getElementById('s-perm-rejections').textContent = s.perm_rejections;
+  document.getElementById('s-perm-no-responses').textContent = s.perm_no_responses;
+  document.getElementById('s-contract-total').textContent = s.contract_total;
+  document.getElementById('s-contract-active').textContent = s.contract_active;
+  document.getElementById('s-contract-interviews').textContent = s.contract_interviews;
+  document.getElementById('s-contract-offers').textContent = s.contract_offers;
+  document.getElementById('s-contract-rejections').textContent = s.contract_rejections;
+  document.getElementById('s-contract-no-responses').textContent = s.contract_no_responses;
+
+  if (weeklyChart) weeklyChart.destroy();
+  weeklyChart = new Chart(document.getElementById('weekly-chart'), {
+    type: 'bar',
+    data: {
+      labels: s.weekly.map(w => w.week),
+      datasets: [
+        { label: 'Perm',             type: 'bar',  data: s.weekly.map(w => w.perm_count),           backgroundColor: '#2563eb', borderRadius: 4 },
+        { label: 'Contract',         type: 'bar',  data: s.weekly.map(w => w.contract_count),        backgroundColor: '#a87c52', borderRadius: 4 },
+        { label: 'Agency contact',   type: 'line', data: s.weekly.map(w => w.agency_contact_count),  borderColor: '#16a34a', backgroundColor: '#16a34a', pointRadius: 4, tension: 0.3, fill: false, borderWidth: 2 },
+        { label: 'Company contact',  type: 'line', data: s.weekly.map(w => w.company_contact_count), borderColor: '#7c3aed', backgroundColor: '#7c3aed', pointRadius: 4, tension: 0.3, fill: false, borderWidth: 2 },
+      ]
+    },
+    options: {
+      plugins: { legend: { position: 'top', labels: { font: { size: 11 } } } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+    }
+  });
+
+  const doughnutOpts = { plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12 } } } };
+
+  if (statusPermChart) statusPermChart.destroy();
+  statusPermChart = new Chart(document.getElementById('status-perm-chart'), {
+    type: 'doughnut',
+    data: { labels: Object.keys(s.by_status_perm), datasets: [{ data: Object.values(s.by_status_perm), backgroundColor: PALETTE }] },
+    options: doughnutOpts,
+  });
+
+  if (statusContractChart) statusContractChart.destroy();
+  statusContractChart = new Chart(document.getElementById('status-contract-chart'), {
+    type: 'doughnut',
+    data: { labels: Object.keys(s.by_status_contract), datasets: [{ data: Object.values(s.by_status_contract), backgroundColor: PALETTE }] },
+    options: doughnutOpts,
+  });
+
+  const srcKeys = Object.keys(s.by_source).sort((a, b) => s.by_source[b] - s.by_source[a]);
+  if (sourceChart) sourceChart.destroy();
+  sourceChart = new Chart(document.getElementById('source-chart'), {
+    type: 'bar',
+    data: { labels: srcKeys, datasets: [{ label: 'Applications', data: srcKeys.map(k => s.by_source[k]), backgroundColor: '#7c3aed', borderRadius: 4 }] },
+    options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+
+  renderSkillsBar(advertSkills, interviewSkills);
+  renderSkillsCloud(advertSkills, interviewSkills);
+}
+
+function renderSkillsBar(advertData, interviewData) {
+  // Merge both sources, summing counts for the same skill (case-insensitive)
+  const map = new Map();
+  advertData.forEach(item => map.set(item.skill.toLowerCase(), { label: item.skill, count: item.count }));
+  interviewData.forEach(item => {
+    const key = item.skill.toLowerCase();
+    if (map.has(key)) {
+      map.get(key).count += item.count;
+    } else {
+      map.set(key, { label: item.skill, count: item.count });
+    }
+  });
+
+  const top10 = [...map.values()].sort((a, b) => b.count - a.count).slice(0, 10);
+
+  if (!top10.length) {
+    document.getElementById('skills-bar-empty').style.display = 'block';
+    document.getElementById('skills-chart').style.display = 'none';
+    return;
+  }
+  document.getElementById('skills-bar-empty').style.display = 'none';
+  document.getElementById('skills-chart').style.display = '';
+
+  if (skillsChart) skillsChart.destroy();
+  skillsChart = new Chart(document.getElementById('skills-chart'), {
+    type: 'bar',
+    data: {
+      labels: top10.map(s => s.label),
+      datasets: [{ label: 'Combined count', data: top10.map(s => s.count), backgroundColor: '#0891b2', borderRadius: 4 }]
+    },
+    options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+}
+
+function renderSkillsCloud(advertData, interviewData) {
+  const cloud = document.getElementById('skills-cloud');
+  const empty = document.getElementById('skills-cloud-empty');
+  cloud.innerHTML = '';
+
+  // Build combined map: skill -> { count, type: 'advert'|'interview'|'both' }
+  const map = new Map();
+  advertData.forEach(item => map.set(item.skill.toLowerCase(), { label: item.skill, count: item.count, type: 'advert' }));
+  interviewData.forEach(item => {
+    const key = item.skill.toLowerCase();
+    if (map.has(key)) {
+      const e = map.get(key);
+      map.set(key, { label: e.label, count: e.count + item.count, type: 'both' });
+    } else {
+      map.set(key, { label: item.skill, count: item.count, type: 'interview' });
+    }
+  });
+
+  const all = [...map.values()].sort((a, b) => b.count - a.count);
+  if (!all.length) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  const max = all[0].count, min = all[all.length - 1].count;
+  const colours = {
+    advert:    { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
+    interview: { bg: '#dcfce7', text: '#166534', border: '#86efac' },
+    both:      { bg: '#ede9fe', text: '#5b21b6', border: '#c4b5fd' },
+  };
+
+  all.forEach(item => {
+    const range = max === min ? 1 : max - min;
+    const size = 12 + ((item.count - min) / range) * 22;
+    const c = colours[item.type];
+    const tag = document.createElement('span');
+    tag.style.cssText = `
+      display:inline-block; padding:4px 14px; border-radius:20px; font-weight:600;
+      cursor:default; white-space:nowrap; transition:transform .15s;
+      font-size:${size.toFixed(1)}px; background:${c.bg}; color:${c.text};
+      border:1px solid ${c.border};
+    `;
+    tag.textContent = item.label;
+    tag.title = `${item.count} total (${item.type})`;
+    tag.onmouseenter = () => tag.style.transform = 'scale(1.07)';
+    tag.onmouseleave = () => tag.style.transform = '';
+    cloud.appendChild(tag);
+  });
+}
+
+loadStats();
+</script>
+</body>
+</html>

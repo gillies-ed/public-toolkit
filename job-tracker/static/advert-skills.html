@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Most In Demand — Job Tracker</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    .demand-header {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 1.25rem;
+      font-size: 13px;
+      color: #1e40af;
+    }
+    .demand-header strong { display: block; margin-bottom: 2px; font-size: 14px; }
+
+    .add-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 1.25rem;
+    }
+    .add-row input[type=text] {
+      flex: 1;
+      max-width: 340px;
+      padding: 7px 11px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      font-size: 14px;
+    }
+
+    .demand-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .demand-table th {
+      background: var(--bg);
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 2px solid var(--border);
+      white-space: nowrap;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .demand-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .demand-table tr:last-child td { border-bottom: none; }
+    .demand-table tr:hover td { background: #f8fafc; }
+
+    .count-cell { font-size: 22px; font-weight: 700; color: #1e40af; width: 60px; text-align: center; }
+    .skill-name { font-weight: 600; font-size: 15px; }
+
+    .counter-btns { display: flex; gap: 6px; align-items: center; }
+    .counter-btns button {
+      width: 30px; height: 30px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .counter-btns button:hover { background: #f1f5f9; }
+    .counter-btns .btn-del {
+      color: #dc2626;
+      font-size: 13px;
+      width: auto;
+      padding: 0 10px;
+    }
+
+    .bar-section { margin-top: 1.5rem; }
+    .empty-state { color: var(--muted); font-size: 13px; padding: 2rem 0; text-align: center; }
+
+    .tag-cloud {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      padding: .5rem 0;
+    }
+    .tag-cloud .cloud-tag {
+      display: inline-block;
+      padding: 5px 16px;
+      border-radius: 20px;
+      font-weight: 600;
+      cursor: default;
+      white-space: nowrap;
+      transition: transform .15s;
+    }
+    .tag-cloud .cloud-tag:hover { transform: scale(1.06); }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="/">Job Tracker</a>
+  <a href="/">Applications</a>
+  <a href="/dashboard">Dashboard</a>
+  <a href="/advert-skills" class="active">Most In Demand</a>
+  <a href="/distances">Distances</a>
+</nav>
+
+<div class="page">
+  <div class="toolbar">
+    <h1>Most In Demand</h1>
+  </div>
+
+  <div class="demand-header">
+    <strong>Advert skills tracker</strong>
+    When you spot a skill in a job advert, add it here. Each time the same skill appears in a different advert, log it again — the count shows how often you've seen it across the market.
+  </div>
+
+  <!-- Add skill -->
+  <div class="add-row">
+    <input type="text" id="skill-input" placeholder="e.g. RAG pipelines" onkeydown="if(event.key==='Enter') addSkill()" />
+    <button class="btn btn-primary" onclick="addSkill()">+ Add sighting</button>
+  </div>
+
+  <!-- Table -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <table class="demand-table">
+      <thead>
+        <tr>
+          <th style="width:70px;text-align:center">Seen</th>
+          <th>Skill / Technology</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="demand-tbody">
+        <tr><td colspan="3" class="empty-state">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Bar chart -->
+  <div class="bar-section card" style="margin-top:1.25rem">
+    <h3 style="font-size:14px;margin-bottom:1rem;color:var(--muted)">Demand at a glance — skills seen in adverts</h3>
+    <div id="chart-empty" class="empty-state" style="display:none">No skills logged yet.</div>
+    <canvas id="demand-chart" height="160"></canvas>
+  </div>
+
+  <!-- Tag cloud -->
+  <div class="card" style="margin-top:1rem">
+    <h3 style="font-size:14px;margin-bottom:.75rem;color:var(--muted)">Skills cloud</h3>
+    <div id="cloud-empty" class="empty-state" style="display:none">No skills logged yet.</div>
+    <div class="tag-cloud" id="demand-cloud"></div>
+  </div>
+</div>
+
+<script>
+const TAG_COLOURS = [
+  { bg:'#dbeafe', text:'#1e40af' },
+  { bg:'#ede9fe', text:'#5b21b6' },
+  { bg:'#cffafe', text:'#164e63' },
+  { bg:'#fef3c7', text:'#92400e' },
+  { bg:'#dcfce7', text:'#166534' },
+  { bg:'#fee2e2', text:'#991b1b' },
+  { bg:'#fce7f3', text:'#9d174d' },
+  { bg:'#ecfccb', text:'#3f6212' },
+  { bg:'#ffedd5', text:'#9a3412' },
+  { bg:'#e0e7ff', text:'#3730a3' },
+];
+
+let demandChart;
+
+async function load() {
+  const data = await fetch('/api/advert-skills/frequency').then(r => r.json());
+  renderTable(data);
+  renderChart(data);
+  renderCloud(data);
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderTable(data) {
+  const tbody = document.getElementById('demand-tbody');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty-state">No skills logged yet. Add one above.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(item => `
+    <tr>
+      <td class="count-cell">${item.count}</td>
+      <td class="skill-name">${esc(item.skill)}</td>
+      <td>
+        <div class="counter-btns">
+          <button title="Log one more sighting" onclick="addSighting('${esc(item.skill)}')">+</button>
+          <button title="Remove one sighting" onclick="removeSighting('${esc(item.skill)}')">−</button>
+          <button class="btn-del" title="Remove all sightings" onclick="deleteAll('${esc(item.skill)}')">Remove all</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderChart(data) {
+  const canvas = document.getElementById('demand-chart');
+  const empty = document.getElementById('chart-empty');
+  if (!data.length) {
+    empty.style.display = 'block';
+    canvas.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  canvas.style.display = '';
+  if (demandChart) demandChart.destroy();
+  demandChart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.skill),
+      datasets: [{
+        label: 'Times seen in adverts',
+        data: data.map(d => d.count),
+        backgroundColor: '#2563eb',
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
+    }
+  });
+}
+
+function renderCloud(data) {
+  const cloud = document.getElementById('demand-cloud');
+  const empty = document.getElementById('cloud-empty');
+  cloud.innerHTML = '';
+  if (!data.length) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  const max = data[0].count;
+  const min = data[data.length - 1].count;
+  data.forEach((item, i) => {
+    const range = max === min ? 1 : max - min;
+    const size = 13 + ((item.count - min) / range) * 24;
+    const c = TAG_COLOURS[i % TAG_COLOURS.length];
+    const tag = document.createElement('span');
+    tag.className = 'cloud-tag';
+    tag.textContent = item.skill;
+    tag.title = `Seen ${item.count} time${item.count !== 1 ? 's' : ''} in adverts`;
+    tag.style.fontSize = size.toFixed(1) + 'px';
+    tag.style.background = c.bg;
+    tag.style.color = c.text;
+    cloud.appendChild(tag);
+  });
+}
+
+async function addSkill() {
+  const input = document.getElementById('skill-input');
+  const skill = input.value.trim();
+  if (!skill) return;
+  await fetch('/api/advert-skills', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ skill }),
+  });
+  input.value = '';
+  load();
+}
+
+async function addSighting(skill) {
+  await fetch('/api/advert-skills', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ skill }),
+  });
+  load();
+}
+
+async function removeSighting(skill) {
+  await fetch('/api/advert-skills/decrement/' + encodeURIComponent(skill), { method: 'DELETE' });
+  load();
+}
+
+async function deleteAll(skill) {
+  if (!confirm(`Remove all sightings of "${skill}"?`)) return;
+  await fetch('/api/advert-skills/' + encodeURIComponent(skill), { method: 'DELETE' });
+  load();
+}
+
+load();
+</script>
+</body>
+</html>

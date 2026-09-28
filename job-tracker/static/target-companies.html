@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Target Companies — Job Tracker</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <style>
+    .tc-table { width:100%; border-collapse:collapse; font-size:14px; }
+    .tc-table th {
+      background:var(--bg); text-align:left; padding:8px 12px;
+      border-bottom:2px solid var(--border); white-space:nowrap;
+      font-size:13px; color:var(--muted); cursor:pointer; user-select:none;
+    }
+    .tc-table th.no-sort { cursor:default; }
+    .tc-table td { padding:8px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
+    .tc-table tr:last-child td { border-bottom:none; }
+    .tc-table tbody tr:hover td { background:#f8fafc; cursor:pointer; }
+    .tc-stale td { background:#fffbeb !important; }
+    .tc-stale:hover td { background:#fef9c3 !important; }
+    .td-name { font-weight:600; }
+    .td-notes { color:var(--muted); font-size:13px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .td-url a { color:#4f46e5; text-decoration:none; font-size:13px; }
+    .td-url a:hover { text-decoration:underline; }
+
+    .stale-badge {
+      display:inline-block; padding:1px 7px; border-radius:10px;
+      font-size:11px; font-weight:600; background:#fef3c7; color:#92400e;
+      margin-left:6px; vertical-align:middle;
+    }
+
+    .cat-badge {
+      display:inline-block; padding:2px 10px; border-radius:12px;
+      font-size:12px; font-weight:600; white-space:nowrap;
+    }
+    .cat-msp      { background:#e0e7ff; color:#3730a3; }
+    .cat-security { background:#fee2e2; color:#991b1b; }
+    .cat-direct   { background:#dcfce7; color:#166534; }
+    .cat-ai       { background:#f3e8ff; color:#6b21a8; }
+    .cat-defence  { background:#fef3c7; color:#92400e; }
+    .cat-other    { background:#f1f5f9; color:#475569; }
+
+    .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;display:flex;align-items:center;justify-content:center; }
+    .modal-overlay.hidden { display:none; }
+    .modal { background:#fff;border-radius:10px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25); }
+    .modal-header { padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between; }
+    .modal-header h2 { font-size:16px;margin:0; }
+    .modal-body { padding:20px; }
+    .modal-footer { padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px; }
+    .field { margin-bottom:14px; }
+    .field label { display:block;font-size:13px;font-weight:600;margin-bottom:4px;color:var(--muted); }
+    .field input, .field select, .field textarea {
+      width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:5px;font-size:14px;box-sizing:border-box;
+    }
+    .field textarea { resize:vertical; min-height:80px; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="/">Job Tracker</a>
+  <a href="/dashboard">Dashboard</a>
+  <a href="/">Applications</a>
+  <a href="/contract">Contract</a>
+  <a href="/contact-log">Contact Log</a>
+  <a href="/target-companies" class="active">Target Companies</a>
+  <a href="/skills-demand">Skills In Demand</a>
+  <a href="/distances">Distances</a>
+  <div class="spacer"></div>
+</nav>
+
+<div class="page">
+  <div class="toolbar">
+    <h1>Target Companies</h1>
+    <span id="import-msg" style="font-size:13px;color:var(--muted)"></span>
+    <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="importCSV(this)" />
+    <button class="btn btn-secondary" onclick="document.getElementById('csv-input').click()">Import CSV</button>
+    <button class="btn btn-primary" onclick="openNew()">+ Add Company</button>
+  </div>
+
+  <div class="filter-bar">
+    <label>Search
+      <input type="text" id="f-search" placeholder="Company name…" oninput="applyFilters()" />
+    </label>
+    <label>Category
+      <select id="f-category" onchange="loadCompanies()">
+        <option value="">All</option>
+        <option>MSP</option>
+        <option>Security</option>
+        <option>Direct Employer</option>
+        <option>AI Startup</option>
+        <option>Defence</option>
+      </select>
+    </label>
+    <label>Max Distance (mi)
+      <input type="number" id="f-max-dist" min="0" step="5" placeholder="Any"
+             oninput="loadCompanies()" style="width:90px" />
+    </label>
+    <button class="btn btn-secondary btn-sm" onclick="clearFilters()">Clear</button>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <table class="tc-table">
+      <thead>
+        <tr>
+          <th onclick="sortBy('name')">Company <span class="sort-icon" id="sh-name"></span></th>
+          <th onclick="sortBy('location')">Location <span class="sort-icon" id="sh-location"></span></th>
+          <th onclick="sortBy('distance_miles')">Distance <span class="sort-icon" id="sh-distance_miles"></span></th>
+          <th class="no-sort">Category</th>
+          <th class="no-sort">Careers Page</th>
+          <th onclick="sortBy('last_checked')">Last Checked <span class="sort-icon" id="sh-last_checked"></span></th>
+          <th class="no-sort">Notes</th>
+          <th class="no-sort"></th>
+        </tr>
+      </thead>
+      <tbody id="tc-tbody">
+        <tr><td colspan="8" class="empty-state">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay hidden" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">Add Company</h2>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <form id="tc-form" onsubmit="saveCompany(event)">
+      <div class="modal-body">
+        <div class="field">
+          <label>Company Name *</label>
+          <input type="text" name="name" required />
+        </div>
+        <div class="field">
+          <label>Location</label>
+          <input type="text" name="location" />
+        </div>
+        <div class="field">
+          <label>Distance (miles)</label>
+          <input type="number" name="distance_miles" min="0" step="0.1" />
+        </div>
+        <div class="field">
+          <label>Category</label>
+          <select name="category">
+            <option value="">— select —</option>
+            <option>MSP</option>
+            <option>Security</option>
+            <option>Direct Employer</option>
+            <option>AI Startup</option>
+            <option>Defence</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Careers Page URL</label>
+          <input type="url" name="careers_url" placeholder="https://…" />
+        </div>
+        <div class="field">
+          <label>Last Checked</label>
+          <input type="date" name="last_checked" />
+        </div>
+        <div class="field">
+          <label>Notes</label>
+          <textarea name="notes"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-danger" id="btn-delete" style="display:none;margin-right:auto" onclick="deleteCompany()">Delete</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+let sortCol = 'name';
+let sortDir = 'asc';
+let editingId = null;
+let allCompanies = [];
+
+// ── Load ──
+async function loadCompanies() {
+  const params = new URLSearchParams();
+  const get = id => document.getElementById(id).value;
+  if (get('f-category'))  params.set('category', get('f-category'));
+  if (get('f-max-dist'))  params.set('max_distance', get('f-max-dist'));
+  params.set('sort_by', sortCol);
+  params.set('sort_dir', sortDir);
+
+  allCompanies = await fetch('/api/target-companies?' + params).then(r => r.json());
+  applyFilters();
+  updateSortIcons();
+}
+
+function applyFilters() {
+  const search = document.getElementById('f-search').value.toLowerCase();
+  const filtered = search
+    ? allCompanies.filter(c => c.name.toLowerCase().includes(search))
+    : allCompanies;
+  renderTable(filtered);
+}
+
+// ── Render ──
+function isStale(lastChecked) {
+  if (!lastChecked) return true;
+  return (Date.now() - new Date(lastChecked)) > 14 * 86400 * 1000;
+}
+
+function catBadge(cat) {
+  const cls = { MSP:'cat-msp', Security:'cat-security', 'Direct Employer':'cat-direct',
+                'AI Startup':'cat-ai', Defence:'cat-defence' }[cat] || 'cat-other';
+  return cat ? `<span class="cat-badge ${cls}">${esc(cat)}</span>` : '—';
+}
+
+function renderTable(companies) {
+  const tbody = document.getElementById('tc-tbody');
+  if (!companies.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No companies found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = companies.map(c => {
+    const stale = isStale(c.last_checked);
+    return `
+    <tr class="${stale ? 'tc-stale' : ''}" onclick="openEdit(${c.id})" style="cursor:pointer">
+      <td class="td-name">${esc(c.name)}${stale ? '<span class="stale-badge">check!</span>' : ''}</td>
+      <td>${esc(c.location || '—')}</td>
+      <td>${c.distance_miles != null ? c.distance_miles + ' mi' : '—'}</td>
+      <td>${catBadge(c.category)}</td>
+      <td class="td-url" onclick="event.stopPropagation()">
+        ${c.careers_url ? `<a href="${esc(c.careers_url)}" target="_blank" rel="noopener">Open ↗</a>` : '—'}
+      </td>
+      <td class="nowrap">${c.last_checked || '<span style="color:var(--muted);font-size:12px">Never</span>'}</td>
+      <td class="td-notes" title="${esc(c.notes || '')}">${esc(c.notes || '—')}</td>
+      <td onclick="event.stopPropagation()">
+        <button class="btn btn-secondary btn-sm" onclick="markChecked(${c.id})">Mark Checked</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Sort ──
+function sortBy(col) {
+  if (sortCol === col) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  else { sortCol = col; sortDir = 'asc'; }
+  loadCompanies();
+}
+
+function updateSortIcons() {
+  document.querySelectorAll('.sort-icon').forEach(el => el.textContent = '');
+  const el = document.getElementById('sh-' + sortCol);
+  if (el) el.textContent = sortDir === 'asc' ? '▲' : '▼';
+}
+
+function clearFilters() {
+  document.getElementById('f-search').value = '';
+  document.getElementById('f-category').value = '';
+  document.getElementById('f-max-dist').value = '';
+  loadCompanies();
+}
+
+// ── Mark checked ──
+async function markChecked(id) {
+  await fetch(`/api/target-companies/${id}/mark-checked`, { method: 'POST' });
+  loadCompanies();
+}
+
+// ── Modal ──
+function openNew() {
+  editingId = null;
+  document.getElementById('modal-title').textContent = 'Add Company';
+  document.getElementById('tc-form').reset();
+  document.getElementById('btn-delete').style.display = 'none';
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+function openEdit(id) {
+  editingId = id;
+  document.getElementById('modal-title').textContent = 'Edit Company';
+  fetch(`/api/target-companies/${id}`)
+    .then(r => r.json())
+    .then(c => {
+      const form = document.getElementById('tc-form');
+      form.reset();
+      for (const [k, v] of Object.entries(c)) {
+        const el = form.elements[k];
+        if (el && v !== null && v !== undefined) el.value = v;
+      }
+      document.getElementById('btn-delete').style.display = '';
+      document.getElementById('modal-overlay').classList.remove('hidden');
+    });
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+// ── Save / delete ──
+async function saveCompany(e) {
+  e.preventDefault();
+  const form = e.target;
+  const data = {};
+  for (const el of form.elements) {
+    if (!el.name) continue;
+    data[el.name] = el.value || null;
+  }
+  if (data.distance_miles) data.distance_miles = parseFloat(data.distance_miles);
+
+  const url = editingId ? `/api/target-companies/${editingId}` : '/api/target-companies';
+  const method = editingId ? 'PUT' : 'POST';
+  const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  if (res.ok) {
+    closeModal();
+    loadCompanies();
+  } else {
+    const err = await res.json();
+    alert('Error: ' + (err.detail || 'Unknown error'));
+  }
+}
+
+async function deleteCompany() {
+  if (!editingId || !confirm('Delete this company?')) return;
+  await fetch(`/api/target-companies/${editingId}`, { method: 'DELETE' });
+  closeModal();
+  loadCompanies();
+}
+
+function esc(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── CSV import ──
+async function importCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const msg = document.getElementById('import-msg');
+  msg.textContent = 'Importing…';
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const res = await fetch('/api/target-companies/import/csv', { method: 'POST', body: form });
+    const data = await res.json();
+    if (res.ok) {
+      msg.textContent = `Imported ${data.imported} companies${data.skipped ? `, ${data.skipped} skipped` : ''}.`;
+      loadCompanies();
+    } else {
+      msg.textContent = 'Import failed: ' + (data.detail || 'Unknown error');
+    }
+  } catch {
+    msg.textContent = 'Import failed: network error.';
+  }
+  input.value = '';
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+loadCompanies();
+</script>
+</body>
+</html>

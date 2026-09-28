@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Skills In Demand — Job Tracker</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      align-items: start;
+    }
+    @media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+
+    .col-header {
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 1rem;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .col-header-advert    { background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; }
+    .col-header-interview { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+
+    .add-row { display:flex; gap:8px; align-items:center; margin-bottom:1rem; }
+    .add-row input[type=text] {
+      flex:1; padding:7px 11px;
+      border:1px solid var(--border); border-radius:5px; font-size:13px;
+    }
+
+    .pie-wrap { display:flex; justify-content:center; padding:.5rem 0 1rem; }
+    .pie-wrap canvas { max-width:280px; max-height:280px; }
+
+    .demand-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .demand-table th {
+      background:var(--bg); text-align:left; padding:7px 10px;
+      border-bottom:2px solid var(--border); white-space:nowrap; color:var(--muted);
+    }
+    .demand-table td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+    .demand-table tr:last-child td { border-bottom:none; }
+    .demand-table tr:hover td { background:#f8fafc; }
+
+    .count-cell { font-size:18px; font-weight:700; width:50px; text-align:center; }
+    .count-advert    { color:#1e40af; }
+    .count-interview { color:#166534; }
+    .skill-name { font-weight:600; }
+
+    .counter-btns { display:flex; gap:4px; align-items:center; }
+    .counter-btns button {
+      width:26px; height:26px; border:1px solid var(--border);
+      border-radius:5px; background:#fff; font-size:16px; line-height:1;
+      cursor:pointer; display:flex; align-items:center; justify-content:center;
+    }
+    .counter-btns button:hover { background:#f1f5f9; }
+    .counter-btns .btn-del { color:#dc2626; font-size:12px; width:auto; padding:0 8px; }
+
+    .empty-state { color:var(--muted); font-size:13px; padding:1.5rem 0; text-align:center; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="/">Job Tracker</a>
+  <a href="/dashboard">Dashboard</a>
+  <a href="/">Applications</a>
+  <a href="/contract">Contract</a>
+  <a href="/contact-log">Contact Log</a>
+  <a href="/target-companies">Target Companies</a>
+  <a href="/skills-demand" class="active">Skills In Demand</a>
+  <a href="/distances">Distances</a>
+</nav>
+
+<div class="page">
+  <div class="toolbar"><h1>Skills In Demand</h1></div>
+
+  <div class="two-col">
+
+    <!-- ══ LEFT: ADVERT SKILLS ══════════════════════════════════════════════ -->
+    <div>
+      <div class="col-header col-header-advert">Skills seen in adverts</div>
+
+      <div class="add-row">
+        <input type="text" id="advert-input" placeholder="e.g. RAG pipelines" onkeydown="if(event.key==='Enter') addAdvertSkill()" />
+        <button class="btn btn-primary btn-sm" onclick="addAdvertSkill()">+ Add</button>
+      </div>
+
+      <div class="card">
+        <div id="advert-chart-empty" class="empty-state" style="display:none">No skills logged yet.</div>
+        <div class="pie-wrap"><canvas id="advert-chart"></canvas></div>
+      </div>
+
+      <div class="card" style="margin-top:1rem;padding:0;overflow:hidden">
+        <table class="demand-table">
+          <thead><tr>
+            <th style="width:50px;text-align:center">Seen</th>
+            <th>Skill</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="advert-tbody">
+            <tr><td colspan="3" class="empty-state">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══ RIGHT: INTERVIEW SKILLS ══════════════════════════════════════════ -->
+    <div>
+      <div class="col-header col-header-interview">Skills asked at interview</div>
+
+      <div style="margin-bottom:1rem;font-size:13px;color:var(--muted)">
+        Logged via the application modal after interviews.
+      </div>
+
+      <div class="card">
+        <div id="interview-chart-empty" class="empty-state" style="display:none">No interview skills logged yet.</div>
+        <div class="pie-wrap"><canvas id="interview-chart"></canvas></div>
+      </div>
+
+      <div class="card" style="margin-top:1rem;padding:0;overflow:hidden">
+        <table class="demand-table">
+          <thead><tr>
+            <th style="width:50px;text-align:center">Asked</th>
+            <th>Skill</th>
+          </tr></thead>
+          <tbody id="interview-tbody">
+            <tr><td colspan="2" class="empty-state">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /.two-col -->
+</div>
+
+<script>
+const PIE_COLOURS = [
+  '#2563eb','#7c3aed','#0891b2','#d97706','#16a34a',
+  '#dc2626','#db2777','#65a30d','#ea580c','#6366f1',
+  '#0369a1','#9333ea','#0e7490','#b45309','#15803d',
+  '#b91c1c','#be185d','#4d7c0f','#c2410c','#4338ca',
+];
+
+let advertChart, interviewChart;
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function load() {
+  const [advert, interview] = await Promise.all([
+    fetch('/api/advert-skills/frequency').then(r => r.json()),
+    fetch('/api/skills/frequency').then(r => r.json()),
+  ]);
+  renderAdvertTable(advert);
+  renderPie('advert-chart', 'advert-chart-empty', advert, advertChart, c => advertChart = c);
+  renderInterviewTable(interview);
+  renderPie('interview-chart', 'interview-chart-empty', interview, interviewChart, c => interviewChart = c);
+}
+
+function renderPie(canvasId, emptyId, data, existing, setter) {
+  const canvas = document.getElementById(canvasId);
+  const empty = document.getElementById(emptyId);
+  if (!data.length) {
+    empty.style.display = 'block';
+    canvas.parentElement.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  canvas.parentElement.style.display = '';
+  if (existing) existing.destroy();
+  setter(new Chart(canvas, {
+    type: 'pie',
+    data: {
+      labels: data.map(d => d.skill),
+      datasets: [{
+        data: data.map(d => d.count),
+        backgroundColor: data.map((_, i) => PIE_COLOURS[i % PIE_COLOURS.length]),
+        borderWidth: 2,
+        borderColor: '#fff',
+      }]
+    },
+    options: {
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { font: { size: 11 }, padding: 10, boxWidth: 12 }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.label}: ${ctx.parsed} (${Math.round(ctx.parsed / ctx.dataset.data.reduce((a,b)=>a+b,0) * 100)}%)`
+          }
+        }
+      }
+    }
+  }));
+}
+
+function renderAdvertTable(data) {
+  const tbody = document.getElementById('advert-tbody');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty-state">No skills logged yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(item => `
+    <tr>
+      <td class="count-cell count-advert">${item.count}</td>
+      <td class="skill-name">${esc(item.skill)}</td>
+      <td>
+        <div class="counter-btns">
+          <button title="Add one more" onclick="addSighting('${esc(item.skill)}')">+</button>
+          <button title="Remove one" onclick="removeSighting('${esc(item.skill)}')">−</button>
+          <button class="btn-del" onclick="deleteAll('${esc(item.skill)}')">All</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function renderInterviewTable(data) {
+  const tbody = document.getElementById('interview-tbody');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="2" class="empty-state">No interview skills logged yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(item => `
+    <tr>
+      <td class="count-cell count-interview">${item.count}</td>
+      <td class="skill-name">${esc(item.skill)}</td>
+    </tr>`).join('');
+}
+
+async function addAdvertSkill() {
+  const input = document.getElementById('advert-input');
+  const skill = input.value.trim();
+  if (!skill) return;
+  await fetch('/api/advert-skills', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ skill }),
+  });
+  input.value = '';
+  load();
+}
+
+async function addSighting(skill) {
+  await fetch('/api/advert-skills', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ skill }),
+  });
+  load();
+}
+
+async function removeSighting(skill) {
+  await fetch('/api/advert-skills/decrement/' + encodeURIComponent(skill), { method:'DELETE' });
+  load();
+}
+
+async function deleteAll(skill) {
+  if (!confirm(`Remove all sightings of "${skill}"?`)) return;
+  await fetch('/api/advert-skills/' + encodeURIComponent(skill), { method:'DELETE' });
+  load();
+}
+
+load();
+</script>
+</body>
+</html>
